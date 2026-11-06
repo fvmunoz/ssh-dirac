@@ -1,0 +1,386 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>1D Topological Hamiltonians</title>
+    <script src="https://cdn.plot.ly/plotly-2.27.0.min.js"></script>
+    <script>
+        window.MathJax = {
+            tex: { inlineMath: [['$', '$'], ['\\(', '\\)']] }
+        };
+    </script>
+    <script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+    <style>
+        body { font-family: sans-serif; max-width: 1200px; margin: 0 auto; padding: 20px; }
+        .tabs { margin-bottom: 20px; }
+        .tab-btn { padding: 10px 20px; cursor: pointer; background: #eee; border: 1px solid #ccc; font-weight: bold; }
+        .tab-btn.active { background: #fff; border-bottom: 2px solid white; }
+        .panel { display: none; padding: 20px; border: 1px solid #ccc; background: #fdfdfd; }
+        .panel.active { display: block; }
+        .controls { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px; margin-top: 15px; }
+        .controls input, .controls select { width: 100%; padding: 5px; }
+        .plots { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 20px; }
+        .wf-plot { grid-column: span 2; }
+        button.calc-btn { margin-top: 15px; padding: 10px 20px; background: #007bff; color: white; border: none; cursor: pointer; }
+        .info-box { background: #eef; padding: 10px; margin-top: 15px; border-left: 4px solid #007bff; }
+    </style>
+</head>
+<body>
+
+    <h1>1D Topological Hamiltonians</h1>
+    
+    <div class="tabs">
+        <button class="tab-btn active" onclick="switchTab('lattice', event)">Lattice SSH (Sharp DW)</button>
+        <button class="tab-btn" onclick="switchTab('continuum', event)">Continuum Discretization</button>
+    </div>
+
+    <!-- LATTICE PANEL -->
+    <div id="lattice" class="panel active">
+        <p><strong>Lattice Hamiltonian (Generalized):</strong></p>
+        <p>$$ H = \sum_n \left[ \Delta_n(c_{n,A}^\dagger c_{n,A} - c_{n,B}^\dagger c_{n,B}) + \left( v_n c_{n,A}^\dagger c_{n,B} + w_n c_{n,B}^\dagger c_{n+1,A} + t_A c_{n,A}^\dagger c_{n+1,A} + t_B c_{n,B}^\dagger c_{n+1,B} + u_1 c_{n,A}^\dagger c_{n+1,B} + u_2 c_{n,B}^\dagger c_{n+2,A} + h.c. \right) \right] $$</p>
+        
+        <div class="controls" id="lattice-form">
+            <label>N Cells: <input type="number" id="l_N" value="60"></label>
+            <label>PBC: <select id="l_pbc"><option value="true">Yes</option><option value="false">No</option></select></label>
+            <label>v (Intra): <input type="number" step="0.1" id="l_v" value="0.8"></label>
+            <label>w (Inter): <input type="number" step="0.1" id="l_w" value="1.2"></label>
+            <label>u1 (3NN A-B): <input type="number" step="0.1" id="l_u1" value="0.2"></label>
+            <label>u2 (3NN B-A): <input type="number" step="0.1" id="l_u2" value="0.0"></label>
+            <label>tA (NNN A): <input type="number" step="0.1" id="l_tA" value="0.0"></label>
+            <label>tB (NNN B): <input type="number" step="0.1" id="l_tB" value="0.0"></label>
+            <label>Δ (Stagger): <input type="number" step="0.1" id="l_delta" value="0.0"></label>
+            <label><input type="checkbox" id="l_dw_hopping" checked> DW in Hoppings</label>
+            <label><input type="checkbox" id="l_dw_staggering"> DW in Staggering</label>
+        </div>
+        <button class="calc-btn" onclick="calculate('lattice')">Calculate Lattice</button>
+        <div id="lattice-info" class="info-box" style="display:none;"></div>
+    </div>
+
+    <!-- CONTINUUM PANEL -->
+    <div id="continuum" class="panel">
+        <p><strong>Dirac Hamiltonian Discretization:</strong></p>
+        <p>$$ H_D \approx m(x)\sigma_x + i v_F \sigma_y \partial_x $$</p>
+        <p>Discretized naively via: $v(x) = v_F + m(x)/2$ and $w(x) = v_F - m(x)/2$.</p>
+        
+        <div class="controls" id="continuum-form">
+            <label>N Cells: <input type="number" id="c_N" value="60"></label>
+            <label>PBC: <select id="c_pbc"><option value="true">Yes</option><option value="false">No</option></select></label>
+            <label>Profile: <select id="c_profile"><option value="tanh">Tanh (Soliton)</option><option value="step">Step</option><option value="linear">Linear</option></select></label>
+            <label>m0 (Mass): <input type="number" step="0.1" id="c_m0" value="0.5"></label>
+            <label>vF (Velocity): <input type="number" step="0.1" id="c_vF" value="1.0"></label>
+            <label>χ (DW Width): <input type="number" step="0.1" id="c_chi" value="5.0"></label>
+            <label>Δ (Constant): <input type="number" step="0.1" id="c_delta" value="0.0"></label>
+        </div>
+        <button class="calc-btn" onclick="calculate('continuum')">Calculate Continuum</button>
+        <div id="continuum-info" class="info-box" style="display:none;"></div>
+    </div>
+
+    <div id="pol-explanation" style="margin-top: 20px; font-size: 0.9em; color: #555;">
+        <strong>Local Sublattice Polarization:</strong> 
+        Calculated using $P_{A/B}^n = \frac{\sum_{\langle i, j \rangle} \left| |\psi_i^{(n)}|^2 - |\psi_j^{(n)}|^2 \right|}{\sum_{\langle i, j \rangle} \left| |\psi_i^{(n)}|^2 + |\psi_j^{(n)}|^2 \right|}$, where $\langle i, j \rangle$ denotes intra-cell A and B pairs.
+    </div>
+
+    <!-- PLOTS AREA -->
+    <div id="plot-lattice" style="display:none; width: 100%; margin-top: 20px;"></div>
+    <div class="plots" style="display:none;" id="results-area">
+        <div id="plot-ipr"></div>
+        <div id="plot-pol"></div>
+        <div id="plot-wf" class="wf-plot"></div>
+    </div>
+
+    <div id="fourier-info" style="margin-top: 40px; padding-top: 20px; border-top: 1px solid #ccc;">
+        <h3>Bulk Bloch Hamiltonian</h3>
+        <p>For the uniform lattice with parameters $v, w, t_A, t_B, u_1, u_2$ and constant staggering $\Delta$, the momentum-space Hamiltonian $H(k) = \vec{d}(k) \cdot \vec{\sigma} + d_0(k)\mathbb{I}$ is given by:</p>
+        <p>$$ d_0(k) = (t_A + t_B)\cos(ka) $$</p>
+        <p>$$ d_x(k) = v + (w + u_1)\cos(ka) + u_2\cos(2ka) $$</p>
+        <p>$$ d_y(k) = (w - u_1)\sin(ka) + u_2\sin(2ka) $$</p>
+        <p>$$ d_z(k) = \Delta + (t_A - t_B)\cos(ka) $$</p>
+    </div>
+
+    <script>
+        let currentEvecs = [];
+
+        function switchTab(tab, event) {
+            document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
+            document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+            document.getElementById(tab).classList.add('active');
+            if (event) event.target.classList.add('active');
+        }
+
+        async function calculate(type) {
+            let payload = {};
+            if (type === 'lattice') {
+                payload = {
+                    N: parseInt(document.getElementById('l_N').value),
+                    pbc: document.getElementById('l_pbc').value === 'true',
+                    v: parseFloat(document.getElementById('l_v').value),
+                    w: parseFloat(document.getElementById('l_w').value),
+                    u1: parseFloat(document.getElementById('l_u1').value),
+                    u2: parseFloat(document.getElementById('l_u2').value),
+                    tA: parseFloat(document.getElementById('l_tA').value),
+                    tB: parseFloat(document.getElementById('l_tB').value),
+                    delta: parseFloat(document.getElementById('l_delta').value),
+                    dw_hopping: document.getElementById('l_dw_hopping').checked,
+                    dw_staggering: document.getElementById('l_dw_staggering').checked
+                };
+            } else {
+                payload = {
+                    N: parseInt(document.getElementById('c_N').value),
+                    pbc: document.getElementById('c_pbc').value === 'true',
+                    profile: document.getElementById('c_profile').value,
+                    m0: parseFloat(document.getElementById('c_m0').value),
+                    vF: parseFloat(document.getElementById('c_vF').value),
+                    chi: parseFloat(document.getElementById('c_chi').value),
+                    delta: parseFloat(document.getElementById('c_delta').value)
+                };
+            }
+
+        try {
+                const res = await fetch(`/api/${type}`, {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify(payload)
+                });
+                
+                if (!res.ok) {
+                    console.error("Server error", await res.text());
+                    return;
+                }
+                
+                const data = await res.json();
+                
+                if (type === 'lattice') {
+                    document.getElementById('continuum-info').style.display = 'none';
+                    const info = document.getElementById('lattice-info');
+                    info.innerHTML = `<strong>Equivalent Continuum Parameters (First Order):</strong><br> 
+                                      Topological Mass $m_{eff} = ${data.eff_m.toFixed(3)}$ <br> 
+                                      Fermi Velocity $v_{F, eff} = ${data.eff_vF.toFixed(3)}$`;
+                    info.style.display = 'block';
+                    if (window.MathJax) MathJax.typesetPromise([info]);
+                    
+                    renderLattice(data.v_arr, data.w_arr, data.delta_arr, data.N);
+                } else {
+                    document.getElementById('lattice-info').style.display = 'none';
+                    
+                    // 1. Dynamic Dirac Hamiltonian LaTeX
+                    const profile = document.getElementById('c_profile').value;
+                    const m0 = parseFloat(document.getElementById('c_m0').value);
+                    const vF = parseFloat(document.getElementById('c_vF').value);
+                    const chi = parseFloat(document.getElementById('c_chi').value);
+                    const delta = parseFloat(document.getElementById('c_delta').value);
+                    
+                    let m_tex = "";
+                    if (profile === 'tanh') m_tex = `${m0} \\tanh(x / ${chi})`;
+                    else if (profile === 'step') m_tex = `${m0} \\text{sgn}(x)`;
+                    else if (profile === 'linear') m_tex = `${m0} (x / ${chi})`;
+                    
+                    let delta_tex = Math.abs(delta) > 0 ? `+ ${delta}\\sigma_z` : "";
+                    
+                    const info = document.getElementById('continuum-info');
+                    info.innerHTML = `<strong>Selected Dirac Hamiltonian:</strong><br> 
+                                      $$ H_D = \\left[ ${m_tex} \\right]\\sigma_x + i(${vF})\\sigma_y \\partial_x ${delta_tex} $$`;
+                    info.style.display = 'block';
+                    if (window.MathJax) MathJax.typesetPromise([info]);
+                    
+                    // 2. Plot the color-mapped continuum lattice
+                    renderContinuumLattice(data.v_arr, data.w_arr, data.delta_arr, data.N);
+                }
+
+                document.getElementById('results-area').style.display = 'grid';
+                currentEvecs = data.evecs;
+                renderPlots(data.evals, data.ipr, data.pol);
+                
+                const maxIprIdx = data.ipr.indexOf(Math.max(...data.ipr));
+                plotWavefunction(maxIprIdx, data.evals[maxIprIdx]);
+                
+            } catch (err) {
+                console.error("Fetch failed", err);
+            }
+
+        }
+
+
+
+
+        function renderLattice(v_arr, w_arr, delta_arr, N) {
+            const maxCells = 20;
+            const mid = Math.floor(N / 2);
+            const start = Math.max(0, mid - maxCells / 2);
+            const end = Math.min(N, mid + maxCells / 2);
+            
+            let traces = [];
+            let max_vw = Math.max(...v_arr.map(Math.abs), ...w_arr.map(Math.abs));
+            if (max_vw === 0) max_vw = 1; 
+            
+            let node_x = [], node_y = [], node_color = [];
+            
+            for (let n = start; n < end; n++) {
+                let xA = n, xB = n + 0.4, xA_next = n + 1;
+                
+                // Colors based on onsite staggering (+Delta on A, -Delta on B)
+                let dA = delta_arr[n];
+                let dB = -delta_arr[n];
+                node_color.push(dA > 0.001 ? 'red' : (dA < -0.001 ? 'blue' : '#888'));
+                node_color.push(dB > 0.001 ? 'red' : (dB < -0.001 ? 'blue' : '#888'));
+                node_x.push(xA, xB);
+                node_y.push(0, 0);
+                
+                // Bonds (reduced multiplier from 8 to 5 for slightly thinner lines)
+                let v_val = Math.abs(v_arr[n]);
+                let w_val = Math.abs(w_arr[n]);
+                let v_width = 1 + 5 * (v_val / max_vw);
+                let w_width = 1 + 5 * (w_val / max_vw);
+                
+                traces.push({
+                    x: [xA, xB], y: [0, 0], mode: 'lines',
+                    line: {color: '#333', width: v_width},
+                    hoverinfo: 'none', showlegend: false
+                });
+                
+                if (n < N - 1) {
+                    traces.push({
+                        x: [xB, xA_next], y: [0, 0], mode: 'lines',
+                        // Custom pixel-length dash array to force short, tight dashes
+                        line: {color: '#333', width: w_width, dash: '4px,3px'},
+                        hoverinfo: 'none', showlegend: false
+                    });
+                }
+            }
+            
+            // Draw nodes on top
+            traces.push({
+                x: node_x, y: node_y, mode: 'markers',
+                marker: {size: 14, color: node_color, line: {width: 2, color: 'black'}},
+                hoverinfo: 'none', showlegend: false
+            });
+            
+            let layout = {
+                title: 'Lattice Structure (Central Window) - Red = +Δ, Blue = -Δ',
+                xaxis: {showgrid: false, zeroline: false, showticklabels: false},
+                yaxis: {showgrid: false, zeroline: false, showticklabels: false, range: [-1, 1]},
+                height: 180, margin: {t: 40, b: 10, l: 10, r: 10},
+                annotations: []
+            };
+            
+            if (start > 0) layout.annotations.push({x: start - 0.5, y: 0, text: '...', showarrow: false, font: {size: 24}});
+            if (end < N) layout.annotations.push({x: end - 0.2, y: 0, text: '...', showarrow: false, font: {size: 24}});
+            
+            Plotly.newPlot('plot-lattice', traces, layout, {staticPlot: true});
+            document.getElementById('plot-lattice').style.display = 'block';
+        }
+
+
+
+        
+
+        function renderContinuumLattice(v_arr, w_arr, delta_arr, N) {
+            const maxCells = 30; // Show slightly more cells to see the smooth variation
+            const mid = Math.floor(N / 2);
+            const start = Math.max(0, mid - maxCells / 2);
+            const end = Math.min(N, mid + maxCells / 2);
+            
+            let traces = [];
+            
+            // Find global min and max absolute hopping to normalize the color scale
+            let all_hoppings = v_arr.map(Math.abs).concat(w_arr.map(Math.abs));
+            let min_val = Math.min(...all_hoppings);
+            let max_val = Math.max(...all_hoppings);
+            if (max_val === min_val) max_val = min_val + 1; // Prevent div by zero
+            
+            // Helper to map a value to a Blue -> Purple -> Red gradient
+            function valToColor(val) {
+                let t = (val - min_val) / (max_val - min_val);
+                let r = Math.round(255 * t);
+                let b = Math.round(255 * (1 - t));
+                return `rgb(${r}, 0, ${b})`;
+            }
+            
+            let node_x = [], node_y = [], node_color = [];
+            
+            for (let n = start; n < end; n++) {
+                let xA = n, xB = n + 0.4, xA_next = n + 1;
+                
+                let dA = delta_arr[n];
+                let dB = -delta_arr[n];
+                node_color.push(dA > 0.001 ? 'red' : (dA < -0.001 ? 'blue' : '#888'));
+                node_color.push(dB > 0.001 ? 'red' : (dB < -0.001 ? 'blue' : '#888'));
+                node_x.push(xA, xB);
+                node_y.push(0, 0);
+                
+                traces.push({
+                    x: [xA, xB], y: [0, 0], mode: 'lines',
+                    line: {color: valToColor(Math.abs(v_arr[n])), width: 4},
+                    hoverinfo: 'none', showlegend: false
+                });
+                
+                if (n < N - 1) {
+                    traces.push({
+                        x: [xB, xA_next], y: [0, 0], mode: 'lines',
+                        line: {color: valToColor(Math.abs(w_arr[n])), width: 4, dash: '4px,3px'},
+                        hoverinfo: 'none', showlegend: false
+                    });
+                }
+            }
+            
+            traces.push({
+                x: node_x, y: node_y, mode: 'markers',
+                marker: {size: 14, color: node_color, line: {width: 2, color: 'black'}},
+                hoverinfo: 'none', showlegend: false
+            });
+            
+            let layout = {
+                title: 'Discretized Lattice (Central Window) - Bonds colored by strength (Blue=Weak, Red=Strong)',
+                xaxis: {showgrid: false, zeroline: false, showticklabels: false},
+                yaxis: {showgrid: false, zeroline: false, showticklabels: false, range: [-1, 1]},
+                height: 180, margin: {t: 40, b: 10, l: 10, r: 10},
+                annotations: []
+            };
+            
+            if (start > 0) layout.annotations.push({x: start - 0.5, y: 0, text: '...', showarrow: false, font: {size: 24}});
+            if (end < N) layout.annotations.push({x: end - 0.2, y: 0, text: '...', showarrow: false, font: {size: 24}});
+            
+            Plotly.newPlot('plot-lattice', traces, layout, {staticPlot: true});
+            document.getElementById('plot-lattice').style.display = 'block';
+        }
+
+
+
+
+
+
+
+
+                      
+        function renderPlots(evals, ipr, pol) {
+            const x = Array.from({length: evals.length}, (_, i) => i);
+            Plotly.newPlot('plot-ipr', [{
+                x: x, y: evals, mode: 'markers', type: 'scatter',
+                marker: { color: ipr, colorscale: 'Viridis', showscale: true, size: 8 }
+            }], { title: 'Spectrum colored by IPR (Localization)', hovermode: 'closest' });
+
+            Plotly.newPlot('plot-pol', [{
+                x: x, y: evals, mode: 'markers', type: 'scatter',
+                marker: { color: pol, colorscale: 'Reds', cmin: 0, cmax: 1, showscale: true, size: 8 }
+            }], { title: 'Spectrum colored by Local Sublattice Pol (0=Mixed, 1=Polarized)', hovermode: 'closest' });
+
+            document.getElementById('plot-ipr').on('plotly_click', data => plotWavefunction(data.points[0].pointIndex, data.points[0].y));
+            document.getElementById('plot-pol').on('plotly_click', data => plotWavefunction(data.points[0].pointIndex, data.points[0].y));
+        }
+
+        function plotWavefunction(idx, energy) {
+            const wf = currentEvecs[idx];
+            const probA = wf.filter((_, i) => i % 2 === 0);
+            const probB = wf.filter((_, i) => i % 2 !== 0);
+            const x = Array.from({length: probA.length}, (_, i) => i);
+
+            Plotly.newPlot('plot-wf', [
+                { x: x, y: probA, mode: 'lines+markers', name: 'Sublattice A', line: {color: 'blue'} },
+                { x: x, y: probB, mode: 'lines+markers', name: 'Sublattice B', line: {color: 'red'} }
+            ], { 
+                title: `Wavefunction Probability (E = ${energy.toFixed(6)}) - Click on spectrum to change state`, 
+                xaxis: {title: 'Unit Cell'}, yaxis: {title: '|ψ|²'} 
+            });
+        }
+    </script>
+</body>
+</html>
+
